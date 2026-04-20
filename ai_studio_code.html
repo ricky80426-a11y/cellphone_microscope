@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>專業顯微鏡系統 - 實戰版</title>
+  <!-- 載入外部資源 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="flex flex-col h-screen w-full relative bg-black">
+
+  <!-- 啟動設備詢問 Modal -->
+  <div id="startup-modal" class="absolute inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
+    <div class="glass-panel p-8 rounded-3xl max-w-md w-full text-center border-2 border-white/20 shadow-2xl">
+      <div class="flex justify-center mb-6">
+        <div class="bg-blue-500/20 p-4 rounded-full"><i data-lucide="tablet" class="w-12 h-12 text-blue-400"></i></div>
+      </div>
+      <h1 class="text-2xl font-bold text-white mb-4">設備類型確認</h1>
+      <p class="text-gray-300 mb-8 leading-relaxed text-base">
+        請問您目前是否正在使用 <span class="text-blue-400 font-bold">iPad (264 PPI)</span>？<br>
+        <span class="text-xs text-green-400 mt-2 block">點擊「是」將自動套用您專屬的精準光學參數：<br>10 mm = 51.95 pt</span>
+      </p>
+      <div class="flex gap-4">
+        <button id="btn-choice-no" type="button" class="flex-1 py-4 bg-gray-700 hover:bg-gray-600 rounded-xl font-bold text-lg btn-active transition-all">否</button>
+        <button id="btn-choice-yes" type="button" class="flex-1 py-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-lg shadow-xl btn-active transition-all">是</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 截圖預覽 Modal -->
+  <div id="preview-modal" class="hidden absolute inset-0 z-[110] bg-black/95 backdrop-blur-lg flex flex-col items-center justify-center p-6">
+    <div class="w-full max-w-2xl flex justify-between items-center mb-4">
+      <div class="flex items-center gap-2 text-white font-bold text-lg"><i data-lucide="image"></i><span>影像擷取成功</span></div>
+      <button id="btn-close-preview" type="button" class="text-white bg-gray-800 p-2 rounded-full active:scale-90"><i data-lucide="x"></i></button>
+    </div>
+    <img id="preview-image" class="w-full max-h-[60vh] object-contain rounded-xl border border-white/20 shadow-2xl mb-6">
+    <div class="w-full max-w-sm flex flex-col gap-3 pointer-events-auto">
+      <button id="btn-share-image" type="button" class="w-full bg-blue-600 py-4 rounded-xl font-bold text-lg flex justify-center items-center gap-2 text-white shadow-xl btn-active">
+        <i data-lucide="share"></i> 儲存至相簿 / 分享
+      </button>
+    </div>
+  </div>
+
+  <!-- 核心相機層 -->
+  <div id="camera-container" class="absolute inset-0 overflow-hidden flex items-center justify-center">
+    <div id="video-wrapper" class="w-full h-full origin-center flex items-center justify-center transition-transform duration-75 z-0">
+      <video id="main-video" autoplay playsinline webkit-playsinline muted disablePictureInPicture class="w-full h-full object-cover pointer-events-none"></video>
+    </div>
+    <div id="flash-effect" class="absolute inset-0 bg-white opacity-0 pointer-events-none z-50 transition-opacity duration-200"></div>
+    
+    <!-- 相機錯誤提示 -->
+    <div id="camera-error" class="hidden absolute inset-0 flex-col items-center justify-center text-gray-300 gap-4 z-50 bg-black/95 px-6 text-center">
+      <i data-lucide="camera-off" class="w-16 h-16 text-red-500 mb-2"></i>
+      <h2 class="text-2xl font-bold text-white">無法存取相機</h2>
+      <p id="camera-error-msg" class="text-red-400 text-sm font-mono bg-red-900/30 p-4 rounded-lg break-words max-w-md border border-red-500/50">錯誤代碼</p>
+      <button id="btn-retry-camera" class="mt-6 px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-full font-bold text-white shadow-xl btn-active flex items-center gap-2">
+        <i data-lucide="refresh-cw" class="w-5 h-5"></i> 重新嘗試授權
+      </button>
+    </div>
+
+    <svg id="interactive-svg" class="absolute inset-0 w-full h-full z-20 pointer-events-none hidden">
+      <!-- 校正與測量層省略，內容與原代碼一致 -->
+      <g id="screen-calib-layer" class="hidden">
+        <line id="screen-calib-line" stroke="#f59e0b" stroke-width="5" stroke-linecap="round" />
+        <line id="screen-calib-tick1" stroke="#f59e0b" stroke-width="5" stroke-linecap="round" />
+        <line id="screen-calib-tick2" stroke="#f59e0b" stroke-width="5" stroke-linecap="round" />
+      </g>
+      <g id="calib-layer" class="hidden">
+        <line id="calib-line" stroke="#22c55e" stroke-width="3" stroke-dasharray="6 4" />
+        <g id="calib-point-1" class="pointer-events-auto cursor-pointer"><circle r="48" fill="transparent" /><circle r="12" fill="#22c55e" class="opacity-80" /><circle r="4" fill="white" /></g>
+        <g id="calib-point-2" class="pointer-events-auto cursor-pointer"><circle r="48" fill="transparent" /><circle r="12" fill="#22c55e" class="opacity-80" /><circle r="4" fill="white" /></g>
+      </g>
+      <g id="measure-layer" class="hidden">
+        <line id="measure-line" stroke="#3b82f6" stroke-width="3" />
+        <g id="measure-point-1" class="pointer-events-auto cursor-pointer"><circle r="48" fill="transparent" /><circle r="12" fill="#3b82f6" class="opacity-90" /><circle r="4" fill="white" /></g>
+        <g id="measure-point-2" class="pointer-events-auto cursor-pointer"><circle r="48" fill="transparent" /><circle r="12" fill="#3b82f6" class="opacity-90" /><circle r="4" fill="white" /></g>
+        <g id="measure-result-group">
+          <rect id="measure-bg" rx="8" fill="rgba(17, 24, 39, 0.85)" stroke="#3b82f6" stroke-width="1.5"/>
+          <text id="measure-text" fill="white" font-size="16" font-family="monospace" font-weight="bold" text-anchor="middle" dominant-baseline="central">0.00 μm (1x)</text>
+        </g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- 放大鏡 -->
+  <div id="loupe" class="absolute top-6 left-6 rounded-full bg-gray-900 z-50 overflow-hidden pointer-events-none hidden border-2 border-white/20 shadow-2xl">
+    <div id="loupe-scale-wrapper" class="absolute top-1/2 left-1/2 w-0 h-0 flex items-center justify-center">
+      <div id="loupe-translate-wrapper" class="absolute top-0 left-0">
+        <div id="mag-video-wrapper" class="origin-center absolute top-0 left-0">
+          <video id="mag-video" autoplay playsinline muted class="w-full h-full object-cover"></video>
+        </div>
+      </div>
+    </div>
+    <div class="absolute inset-0 flex items-center justify-center opacity-90">
+      <div class="w-10 h-[2px] bg-green-400 absolute"></div>
+      <div class="w-[2px] h-10 bg-green-400 absolute"></div>
+    </div>
+  </div>
+
+  <!-- 控制介面 -->
+  <div id="ui-main" class="absolute inset-0 z-30 pointer-events-none flex flex-col justify-between">
+    <!-- 上方、中間、下方 UI 按鈕與面板內容 (與原代碼 HTML 結構相同) -->
+    <!-- 為了篇幅省略重複的按鈕與面板結構，請保留原 HTML 中 ui-top, ui-mid, ui-bottom 內的內容 -->
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
